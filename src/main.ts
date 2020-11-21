@@ -1,92 +1,18 @@
-const actionTypes = ["BREW", "CAST", "OPPONENT_CAST"] as const;
-export type ActionType = typeof actionTypes[number];
-function parseActionType(input: string): ActionType | Error {
-  return (
-    actionTypes.find((x) => x == input) ||
-    new Error(`no ActionType found for input '${input}'`)
-  );
-}
-export type Action = {
-  actionId: number;
-  actionType: ActionType;
-  inventoryCost: Inventory;
-  price: number;
-  tomeIndex: number;
-  taxCount: number;
-  castable: boolean;
-  repeatable: boolean;
-};
-
-export type Inventory = [number, number, number, number];
-
-export type Player = {
-  inventory: Inventory;
-  score: number;
-};
-
-export type GameState = {
-  actions: Action[];
-  player: Player;
-  enemy: Player;
-};
-export function validPlayerActions(player: Player, actions: Action[]) {
-  return actions.filter(
-    (a) =>
-      (a.actionType == "BREW" || (a.actionType == "CAST" && a.castable)) &&
-      player.inventory.reduce(
-        (valid, x, i) => valid && x + a.inventoryCost[i] >= 0,
-        true
-      )
-  );
-}
-
-export function apply(player: Player, recipe: Action): [Player, Action] {
-  const newPlayer: Player = {
-      score: player.score + recipe.price,
-      inventory: [
-        player.inventory[0] + recipe.inventoryCost[0],
-        player.inventory[1] + recipe.inventoryCost[1],
-        player.inventory[2] + recipe.inventoryCost[2],
-        player.inventory[3] + recipe.inventoryCost[3],
-      ],
-    },
-    newRecipe = { ...recipe, castable: recipe.repeatable };
-
-  return [newPlayer, newRecipe];
-}
-
-function maxBy<T>(ts: T[], f: (t: T) => number): T | null {
-  let max: T | null = null,
-    maxValue: number | null = null;
-
-  for (const t of ts) {
-    const tValue = f(t);
-    if (maxValue == null || tValue > maxValue) {
-      max = t;
-      maxValue = tValue;
-    }
-  }
-
-  return max;
-}
+import { GameState, Action, ActionType, parseActionType, Player } from "./gamestate"
+import { maxBy } from './array'
+import { rushBrew } from "./strategy";
 
 function step(gameState: GameState): string {
-  const eligibleRecipes = gameState.actions.filter(
-      (r) =>
-        r.actionType == "BREW" &&
-        r.inventoryCost.reduce(
-          (eligible, c, i) => eligible && c <= gameState.player.inventory[i],
-          true
-        )
-    ),
-    chosenRecipe = maxBy(eligibleRecipes, (r) => r.price);
+  const choice = rushBrew(gameState, 5)
 
-  if (chosenRecipe)
-    return `${chosenRecipe.actionType} ${chosenRecipe.actionId}`;
-  return "WAIT";
+  if (choice) {
+    return `${choice.actionType} ${choice.actionId}`
+  }
+
+  return "REST";
 }
 
-function main() {
+export function run() {
   // game loop
   while (true) {
     function parseGameState(): GameState {
@@ -130,6 +56,16 @@ function main() {
       for (let i = 0; i < actionCount; i++) {
         actions.push(parseAction());
       }
+      actions.push({
+        actionId: -1,
+        actionType: "REST",
+        inventoryCost: [0, 0, 0, 0],
+        price: 0,
+        tomeIndex: 0,
+        taxCount: 0,
+        castable: false,
+        repeatable: false
+      })
 
       return actions;
     }
@@ -154,8 +90,4 @@ function main() {
     // in the first league: BREW <id> | WAIT; later: BREW <id> | CAST <id> [<times>] | LEARN <id> | REST | WAIT
     console.log(step(gameState));
   }
-}
-
-export function run() {
-  main();
 }
